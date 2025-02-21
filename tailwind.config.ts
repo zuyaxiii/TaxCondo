@@ -12,6 +12,11 @@ export default {
         background: "var(--background)",
         foreground: "var(--foreground)",
       },
+      fontFamily: {
+        prompt: ['var(--font-prompt)', 'Prompt', 'sans-serif'],
+        geist: ["var(--font-geist-sans)", "sans-serif"],
+        geistMono: ["var(--font-geist-mono)", "monospace"],
+      },
     },
   },
   plugins: [],

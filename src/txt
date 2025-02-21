@@ -1,0 +1,580 @@
+"use client";
+import { useState, useEffect } from "react";
+
+const calculateTax = (propertyValue: number, holdingYears: number): number => {
+  const holdingTaxRates: { [key: number]: number } = {
+    1: 0.08,
+    2: 0.16,
+    3: 0.23,
+    4: 0.29,
+    5: 0.35,
+    6: 0.4,
+    7: 0.45,
+    8: 0.5,
+  };
+
+  const applicableRate =
+    holdingYears >= 8 ? 0.5 : holdingTaxRates[holdingYears] || 0;
+  const taxableIncome = propertyValue * applicableRate;
+  const annualIncome = taxableIncome / holdingYears;
+
+  const taxBrackets = [
+    { limit: 300000, rate: 0.05 },
+    { limit: 500000, rate: 0.1 },
+    { limit: 750000, rate: 0.15 },
+    { limit: 1000000, rate: 0.2 },
+    { limit: 2000000, rate: 0.25 },
+    { limit: 5000000, rate: 0.3 },
+    { limit: Infinity, rate: 0.35 },
+  ];
+
+  let remainingIncome = annualIncome;
+  let totalTaxPerYear = 0;
+  let previousLimit = 0;
+
+  for (const bracket of taxBrackets) {
+    if (remainingIncome > 0) {
+      const taxableAmount = Math.min(
+        remainingIncome,
+        bracket.limit - previousLimit
+      );
+      totalTaxPerYear += taxableAmount * bracket.rate;
+      remainingIncome -= taxableAmount;
+      previousLimit = bracket.limit;
+    } else {
+      break;
+    }
+  }
+
+  return totalTaxPerYear * holdingYears;
+};
+
+const CondoTaxCalculator = () => {
+  const [values, setValues] = useState({
+    salePrice: "",
+    assessedPrice: "",
+    purchaseDate: "",
+    saleDate: "",
+    isRegistered: false,
+    isRegisteredOverOneYear: false,
+    loanAmount: "",
+  });
+
+  const [holdingPeriod, setHoldingPeriod] = useState<number | null>(null);
+  const [registrationPeriod, setRegistrationPeriod] = useState<number | null>(
+    null
+  );
+  const [results, setResults] = useState<any>(null);
+
+  const [useCustomFees, setUseCustomFees] = useState(false);
+  const [customFees, setCustomFees] = useState({
+    transferFee: "",
+    mortgageFee: "",
+  });
+
+  const [paymentShares, setPaymentShares] = useState({
+    transferFee: "50-50",
+    specificBusinessTax: "50-50",
+    stampDuty: "50-50",
+    withholdingTax: "50-50",
+    mortgageFee: "50-50",
+  });
+
+  const updatePaymentShare = (key: string, value: string) => {
+    setPaymentShares((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const calculateShare = (amount: number, share: string) => {
+    if (share === "buyer") return { buyer: amount, seller: 0 };
+    if (share === "seller") return { buyer: 0, seller: amount };
+    return { buyer: amount / 2, seller: amount / 2 };
+  };
+
+  const calculateHoldingPeriod = (purchaseDate: string, saleDate: string) => {
+    const purchase = new Date(purchaseDate);
+    const sale = new Date(saleDate);
+
+    // ✅ เริ่มนับจากวันถัดไป
+    sale.setDate(sale.getDate() + 1);
+
+    let years = sale.getFullYear() - purchase.getFullYear();
+
+    // ✅ ถ้าข้ามวันครบรอบมาแล้ว ให้นับเป็นปีถัดไปทันที
+    if (
+      sale.getMonth() > purchase.getMonth() ||
+      (sale.getMonth() === purchase.getMonth() &&
+        sale.getDate() > purchase.getDate())
+    ) {
+      years += 1;
+    }
+
+    return years;
+  };
+
+  useEffect(() => {
+    if (values.purchaseDate && values.saleDate) {
+      setHoldingPeriod(
+        calculateHoldingPeriod(values.purchaseDate, values.saleDate)
+      );
+    }
+  }, [values.purchaseDate, values.saleDate]);
+
+  const calculate = () => {
+    if (holdingPeriod === null || isNaN(holdingPeriod)) {
+      alert("เกิดข้อผิดพลาดในการคำนวณระยะเวลาถือครอง");
+      return;
+    }
+
+    if (!values.salePrice || !values.assessedPrice || !values.loanAmount) {
+      alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+      return;
+    }
+
+    const salePrice = parseFloat(values.salePrice);
+    const assessedPrice = parseFloat(values.assessedPrice);
+    const loanAmount = parseFloat(values.loanAmount);
+    const baseForSpecificTax = Math.max(salePrice, assessedPrice);
+
+  // ✅ ใช้ค่าธรรมเนียมโอนที่กำหนดเองเป็น % (หาร 100)
+  const transferFeeRate = useCustomFees
+    ? parseFloat(customFees.transferFee) / 100 || 0
+    : 0.02;
+  const transferFee = assessedPrice * transferFeeRate;
+
+  // ✅ ใช้ค่าจดจำนองที่กำหนดเองเป็น % (หาร 100)
+  const mortgageFeeRate = useCustomFees
+    ? parseFloat(customFees.mortgageFee) / 100 || 0
+    : 0.01;
+  const mortgageFee = loanAmount * mortgageFeeRate;
+
+    let specificBusinessTax = 0;
+    const isExemptFromBusinessTax =
+      holdingPeriod > 5 ||
+      (values.isRegistered && values.isRegisteredOverOneYear);
+
+    if (!isExemptFromBusinessTax) {
+      specificBusinessTax = baseForSpecificTax * 0.033;
+    }
+
+    let stampDuty = specificBusinessTax === 0 ? salePrice * 0.005 : 0;
+    const totalIncomeTax = calculateTax(assessedPrice, holdingPeriod);
+
+    // ✅ คำนวณค่าธรรมเนียมทั้งหมด
+    const totalFees =
+      transferFee +
+      specificBusinessTax +
+      stampDuty +
+      totalIncomeTax +
+      mortgageFee;
+
+    setResults({
+      transferFee,
+      specificBusinessTax,
+      stampDuty,
+      totalIncomeTax,
+      withholdingTax: totalIncomeTax,
+      mortgageFee,
+      total: totalFees,
+      isExemptFromBusinessTax,
+      holdingPeriod,
+      registrationPeriod,
+    });
+  };
+
+  const validateDates = (name: string, value: string): boolean => {
+    const date = new Date(value);
+    const today = new Date();
+    const purchase = new Date(values.purchaseDate);
+    const sale = new Date(values.saleDate);
+
+    if (name === "purchaseDate") {
+      if (date > today || (values.saleDate && date > sale)) {
+        return false;
+      }
+    } else if (name === "saleDate") {
+      if (values.purchaseDate && date < purchase) {
+        return false;
+      }
+    } else if (name === "registrationDate") {
+      if (date > today || (values.saleDate && date > sale)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    if (validateDates(name, value)) {
+      setValues({ ...values, [name]: value });
+    }
+  };
+
+  return (
+    <div className="w-full max-w-xl mx-auto bg-white p-6 rounded-md shadow-md">
+      <h1 className="text-2xl font-semibold text-center mb-4 text-black">
+        ตัวคำนวณภาษีซื้อขายคอนโด
+      </h1>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1 text-black">
+            ราคาขาย (บาท)
+          </label>
+          <input
+            type="number"
+            value={values.salePrice}
+            onChange={(e) =>
+              setValues({ ...values, salePrice: e.target.value })
+            }
+            placeholder="กรอกราคาขาย"
+            min="0"
+            className="w-full p-2 border border-gray-300 rounded-md"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1 text-black">
+            ราคาประเมิน (บาท)
+          </label>
+          <input
+            type="number"
+            value={values.assessedPrice}
+            onChange={(e) =>
+              setValues({ ...values, assessedPrice: e.target.value })
+            }
+            placeholder="กรอกราคาประเมิน"
+            min="0"
+            className="w-full p-2 border border-gray-300 rounded-md"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1 text-black">
+            ยอดเงินกู้ (บาท)
+          </label>
+          <input
+            type="number"
+            id="loanAmount"
+            name="loanAmount"
+            value={values.loanAmount}
+            onChange={handleDateChange}
+            placeholder="หากไม่มีให้ใส่ 0"
+            min="0"
+            className="w-full p-2 border border-gray-300 rounded-md"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1 text-black">
+              วันที่ซื้อ
+            </label>
+            <input
+              type="date"
+              name="purchaseDate"
+              value={values.purchaseDate}
+              onChange={handleDateChange}
+              max={new Date().toISOString().split("T")[0]}
+              className="w-full p-2 border border-gray-300 rounded-md"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1 text-black">
+              วันที่จะขาย
+            </label>
+            <input
+              type="date"
+              name="saleDate"
+              value={values.saleDate}
+              onChange={handleDateChange}
+              min={values.purchaseDate}
+              className="w-full p-2 border border-gray-300 rounded-md"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <label className="text-sm font-medium text-black">
+            มีชื่ออยู่ในทะเบียนบ้าน
+          </label>
+        </div>
+
+        <div className="flex space-x-4">
+          <button
+            className={`p-2 rounded-md ${
+              !values.isRegisteredOverOneYear
+                ? "bg-blue-500 text-white"
+                : "bg-gray-200 text-black"
+            }`}
+            onClick={() =>
+              setValues({ ...values, isRegisteredOverOneYear: false })
+            }
+          >
+            น้อยกว่า 1 ปี หรือไม่มี
+          </button>
+          <button
+            className={`p-2 rounded-md ${
+              values.isRegisteredOverOneYear
+                ? "bg-blue-500 text-white"
+                : "bg-gray-200 text-black"
+            }`}
+            onClick={() =>
+              setValues({ ...values, isRegisteredOverOneYear: true })
+            }
+          >
+            เกิน 1 ปี
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <label className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={useCustomFees}
+              onChange={() => setUseCustomFees(!useCustomFees)}
+            />
+            <span>ใช้ค่าธรรมเนียมที่กำหนดเอง</span>
+          </label>
+
+          {useCustomFees && (
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <label>ค่าธรรมเนียมการโอน:</label>
+              <input
+                type="number"
+                className="border p-1"
+                value={customFees.transferFee}
+                onChange={(e) =>
+                  setCustomFees({ ...customFees, transferFee: e.target.value })
+                }
+              />
+
+              <label>ค่าจดจำนอง:</label>
+              <input
+                type="number"
+                className="border p-1"
+                value={customFees.mortgageFee}
+                onChange={(e) =>
+                  setCustomFees({ ...customFees, mortgageFee: e.target.value })
+                }
+              />
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={calculate}
+          className="w-full bg-blue-500 text-white p-2 rounded-md mt-4"
+        >
+          คำนวณภาษี
+        </button>
+
+        {results && (
+          <div className="mt-4 space-y-2 text-black">
+            <h3 className="font-medium">ผลการคำนวณ</h3>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>ระยะเวลาถือครอง:</div>
+              <div>{results.holdingPeriod.toFixed(2)} ปี</div>
+
+              <div>ค่าธรรมเนียมการโอน:</div>
+              <div>
+                {results.transferFee.toLocaleString()} บาท
+                <div className="flex space-x-2 mt-1">
+                  {["buyer", "seller", "50-50"].map((option) => (
+                    <button
+                      key={option}
+                      className={`p-1 text-xs rounded-md ${
+                        paymentShares.transferFee === option
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-black"
+                      }`}
+                      onClick={() => updatePaymentShare("transferFee", option)}
+                    >
+                      {option === "buyer"
+                        ? "ผู้ซื้อ"
+                        : option === "seller"
+                        ? "ผู้ขาย"
+                        : "50:50"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ภาษีธุรกิจเฉพาะ */}
+              <div>ภาษีธุรกิจเฉพาะ:</div>
+              <div>
+                {results.isExemptFromBusinessTax
+                  ? "ได้รับการยกเว้น"
+                  : `${results.specificBusinessTax.toLocaleString()} บาท`}
+                <div className="flex space-x-2 mt-1">
+                  {["buyer", "seller", "50-50"].map((option) => (
+                    <button
+                      key={option}
+                      className={`p-1 text-xs rounded-md ${
+                        paymentShares.specificBusinessTax === option
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-black"
+                      }`}
+                      onClick={() =>
+                        updatePaymentShare("specificBusinessTax", option)
+                      }
+                    >
+                      {option === "buyer"
+                        ? "ผู้ซื้อ"
+                        : option === "seller"
+                        ? "ผู้ขาย"
+                        : "50:50"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* อากรแสตมป์ */}
+              <div>อากรแสตมป์:</div>
+              <div>
+                {results.stampDuty.toLocaleString()} บาท
+                <div className="flex space-x-2 mt-1">
+                  {["buyer", "seller", "50-50"].map((option) => (
+                    <button
+                      key={option}
+                      className={`p-1 text-xs rounded-md ${
+                        paymentShares.stampDuty === option
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-black"
+                      }`}
+                      onClick={() => updatePaymentShare("stampDuty", option)}
+                    >
+                      {option === "buyer"
+                        ? "ผู้ซื้อ"
+                        : option === "seller"
+                        ? "ผู้ขาย"
+                        : "50:50"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ภาษีหัก ณ ที่จ่าย */}
+              <div>ภาษีหัก ณ ที่จ่าย:</div>
+              <div>
+                {results.withholdingTax.toLocaleString()} บาท
+                <div className="flex space-x-2 mt-1">
+                  {["buyer", "seller", "50-50"].map((option) => (
+                    <button
+                      key={option}
+                      className={`p-1 text-xs rounded-md ${
+                        paymentShares.withholdingTax === option
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-black"
+                      }`}
+                      onClick={() =>
+                        updatePaymentShare("withholdingTax", option)
+                      }
+                    >
+                      {option === "buyer"
+                        ? "ผู้ซื้อ"
+                        : option === "seller"
+                        ? "ผู้ขาย"
+                        : "50:50"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ค่าจดจำนอง */}
+              <div>ค่าจดจำนอง:</div>
+              <div>
+                {results.mortgageFee.toLocaleString()} บาท
+                <div className="flex space-x-2 mt-1">
+                  {["buyer", "seller", "50-50"].map((option) => (
+                    <button
+                      key={option}
+                      className={`p-1 text-xs rounded-md ${
+                        paymentShares.mortgageFee === option
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-black"
+                      }`}
+                      onClick={() => updatePaymentShare("mortgageFee", option)}
+                    >
+                      {option === "buyer"
+                        ? "ผู้ซื้อ"
+                        : option === "seller"
+                        ? "ผู้ขาย"
+                        : "50:50"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="font-medium">รวมทั้งหมด:</div>
+              <div className="font-medium">
+                {results.total.toLocaleString()} บาท
+              </div>
+            </div>
+
+            {/* แสดงผลยอดรวมที่ผู้ซื้อและผู้ขายต้องจ่าย */}
+            <div className="mt-4">
+              <h3 className="font-medium">สรุปการชำระเงิน</h3>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>ผู้ซื้อจ่าย:</div>
+                <div>
+                  {(
+                    calculateShare(
+                      results.transferFee,
+                      paymentShares.transferFee
+                    ).buyer +
+                    calculateShare(
+                      results.specificBusinessTax,
+                      paymentShares.specificBusinessTax
+                    ).buyer +
+                    calculateShare(results.stampDuty, paymentShares.stampDuty)
+                      .buyer +
+                    calculateShare(
+                      results.withholdingTax,
+                      paymentShares.withholdingTax
+                    ).buyer +
+                    calculateShare(
+                      results.mortgageFee,
+                      paymentShares.mortgageFee
+                    ).buyer
+                  ).toLocaleString()}{" "}
+                  บาท
+                </div>
+
+                <div>ผู้ขายจ่าย:</div>
+                <div>
+                  {(
+                    calculateShare(
+                      results.transferFee,
+                      paymentShares.transferFee
+                    ).seller +
+                    calculateShare(
+                      results.specificBusinessTax,
+                      paymentShares.specificBusinessTax
+                    ).seller +
+                    calculateShare(results.stampDuty, paymentShares.stampDuty)
+                      .seller +
+                    calculateShare(
+                      results.withholdingTax,
+                      paymentShares.withholdingTax
+                    ).seller +
+                    calculateShare(
+                      results.mortgageFee,
+                      paymentShares.mortgageFee
+                    ).seller
+                  ).toLocaleString()}{" "}
+                  บาท
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default CondoTaxCalculator;
