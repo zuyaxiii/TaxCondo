@@ -7,7 +7,6 @@ const API_URL = `https://catalog.treasury.go.th/tl/api/3/action/datastore_search
 
 async function fetchRecords(offset: number, limit: number) {
   const response = await fetch(`${API_URL}?limit=${limit}&offset=${offset}&resource_id=${RESOURCE_ID}`);
-  console.log(response); 
   if (!response.ok) throw new Error(`Failed to fetch at offset ${offset}`);
 
   const data = await response.json();
@@ -16,17 +15,14 @@ async function fetchRecords(offset: number, limit: number) {
 
 export async function GET() {
   try {
-    const firstBatch = await fetchRecords(0, LIMIT);
-    const totalRecords = Math.min(MAX_RECORDS, firstBatch.length < LIMIT ? firstBatch.length : 122000);
-    
-    const batchCount = Math.ceil(totalRecords / LIMIT);
-    const offsets = Array.from({ length: batchCount - 1 }, (_, i) => (i + 1) * LIMIT);
+    const totalBatches = Math.ceil(MAX_RECORDS / LIMIT);
+    const offsets = Array.from({ length: totalBatches }, (_, i) => i * LIMIT);
 
-    console.log(`Fetching ${totalRecords} records in ${batchCount} batches...`);
+    console.log(`Fetching records in ${totalBatches} batches...`);
 
     const dataBatches = await Promise.all(offsets.map(offset => fetchRecords(offset, LIMIT)));
 
-    const allRecords = [firstBatch, ...dataBatches].flat();
+    const allRecords = dataBatches.flat(); 
 
     return NextResponse.json({
       success: true,
