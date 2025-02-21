@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '50mb',
     },
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/treasury',
+        destination: '/api/treasury',
+      },
+    ];
+  },
 };
 
 export default nextConfig;
