@@ -93,12 +93,10 @@ const CondoTaxCalculator: React.FC = () => {
     const assessedPrice = parseFloat(values.assessedPrice);
     const loanAmount = parseFloat(values.loanAmount);
 
-    // ✅ ใช้ค่าธรรมเนียมโอนที่กำหนดเองเป็น % (หาร 100)
     const transferFeeRate = useCustomFees
       ? parseFloat(customFees.transferFee) / 100 || 0
       : 0.02;
 
-    // ✅ ใช้ค่าจดจำนองที่กำหนดเองเป็น % (หาร 100)
     const mortgageFeeRate = useCustomFees
       ? parseFloat(customFees.mortgageFee) / 100 || 0
       : 0.01;

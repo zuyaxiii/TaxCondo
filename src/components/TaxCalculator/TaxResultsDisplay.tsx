@@ -124,74 +124,70 @@ const TaxResultsDisplay: React.FC<TaxResultsDisplayProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-200">
-                <th className="p-2 text-left">รายการ</th>
-                <th className="p-2 text-right">จำนวนเงิน</th>
-                <th className="p-2 text-right">ผู้ซื้อจ่าย</th>
-                <th className="p-2 text-right">ผู้ขายจ่าย</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                {
-                  label: "ค่าธรรมเนียมการทำนิติกรรม (ค่าโอน)",
-                  value: results.transferFee,
-                  buyer: transferFeeShares.buyer,
-                  seller: transferFeeShares.seller,
-                },
-                {
-                  label: "ค่าภาษีธุรกิจเฉพาะ",
-                  value: results.specificBusinessTax,
-                  buyer: specificTaxShares.buyer,
-                  seller: specificTaxShares.seller,
-                },
-                {
-                  label: "ค่าอากรแสตมป์",
-                  value: results.stampDuty,
-                  buyer: stampDutyShares.buyer,
-                  seller: stampDutyShares.seller,
-                },
-                {
-                  label: "ภาษีเงินได้บุคคลธรรมดาของผู้ขาย (หัก ณ ที่จ่าย)",
-                  value: results.withholdingTax,
-                  buyer: withholdingTaxShares.buyer,
-                  seller: withholdingTaxShares.seller,
-                },
-                {
-                  label: "ค่าจดจำนอง (กรณีจำนองกับสถาบันการเงิน)",
-                  value: results.mortgageFee,
-                  buyer: mortgageFeeShares.buyer,
-                  seller: mortgageFeeShares.seller,
-                },
-              ].map((item, index) => (
-                <tr key={index}>
-                  <td className="p-2 border-b">{item.label}</td>
-                  <td className="p-2 border-b text-right">
-                    {formatCurrency(item.value)}
-                  </td>
-                  <td className="p-2 border-b text-right">
-                    {formatCurrency(item.buyer)}
-                  </td>
-                  <td className="p-2 border-b text-right">
-                    {formatCurrency(item.seller)}
-                  </td>
-                </tr>
-              ))}
-              <tr className="font-bold bg-gray-100">
-                <td className="p-2">รวมค่าใช้จ่ายทั้งหมด</td>
-                <td className="p-2 text-right">
-                  {formatCurrency(results.total)}
-                </td>
-                <td className="p-2 text-right">{formatCurrency(buyerTotal)}</td>
-                <td className="p-2 text-right">
-                  {formatCurrency(sellerTotal)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+  <table className="w-full border-collapse">
+    <thead>
+      <tr className="bg-gray-200">
+        <th className="p-2 text-left">รายการ</th>
+        <th className="p-2 text-right">จำนวนเงิน</th>
+        <th className="p-2 text-right">ผู้ซื้อจ่าย</th>
+        <th className="p-2 text-right">ผู้ขายจ่าย</th>
+      </tr>
+    </thead>
+    <tbody>
+      {[
+        {
+          label: "ค่าธรรมเนียมการทำนิติกรรม (ค่าโอน)",
+          value: results.transferFee,
+          buyer: transferFeeShares.buyer,
+          seller: transferFeeShares.seller,
+        },
+        {
+          label: "ค่าภาษีธุรกิจเฉพาะ",
+          value: results.specificBusinessTax,
+          buyer: specificTaxShares.buyer,
+          seller: specificTaxShares.seller,
+        },
+        {
+          label: "ค่าอากรแสตมป์",
+          value: results.stampDuty,
+          buyer: stampDutyShares.buyer,
+          seller: stampDutyShares.seller,
+        },
+        {
+          label: "ภาษีเงินได้บุคคลธรรมดาของผู้ขาย (หัก ณ ที่จ่าย)",
+          value: results.withholdingTax,
+          buyer: withholdingTaxShares.buyer,
+          seller: withholdingTaxShares.seller,
+        },
+        {
+          label: "ค่าจดจำนอง (กรณีจำนองกับสถาบันการเงิน)",
+          value: results.mortgageFee,
+          buyer: mortgageFeeShares.buyer,
+          seller: mortgageFeeShares.seller,
+        },
+      ].map((item, index) => (
+        <tr key={index}>
+          <td className="p-2 border-b">{item.label}</td>
+          <td className="p-2 border-b text-right">
+            {formatCurrency(item.value)}
+          </td>
+          <td className="p-2 border-b text-right">
+            {formatCurrency(item.buyer)}
+          </td>
+          <td className="p-2 border-b text-right">
+            {formatCurrency(item.seller)}
+          </td>
+        </tr>
+      ))}
+      <tr className="font-bold bg-gray-100">
+        <td className="p-2">รวมค่าใช้จ่ายทั้งหมด</td>
+        <td className="p-2 text-right">{formatCurrency(results.total)}</td>
+        <td className="p-2 text-right">{formatCurrency(buyerTotal)}</td>
+        <td className="p-2 text-right">{formatCurrency(sellerTotal)}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
         <div className="flex flex-col justify-end mt-4">
           <div className="bg-yellow-300 text-black px-3 py-1 rounded-t-lg w-fit font-semibold">
