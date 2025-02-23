@@ -38,7 +38,7 @@ export const config = {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || '';
+    const search = searchParams.get('search') || ''; // ค้นหาชื่อคอนโด
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '100', 10);
     const offset = (page - 1) * limit;
