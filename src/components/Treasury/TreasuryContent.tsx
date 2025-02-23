@@ -28,11 +28,11 @@ function TreasuryContent() {
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState<string>("");
   const [selectedUseType, setSelectedUseType] = useState<string>("");
-
+  
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch("/api/treasury");
+        const response = await fetch(`/api/treasury?page=1&limit=100`); // ใช้ pagination ดึงข้อมูลเร็วขึ้น
         if (!response.ok) throw new Error("Failed to fetch data");
         const result: TreasuryData = await response.json();
         setData(result.result.records);
@@ -49,9 +49,7 @@ function TreasuryContent() {
   const uniqueCondos = useMemo(() => {
     return Array.from(
       new Set(
-        data
-          .map((record) => record.CONDO_NAME)
-          .filter((name): name is string => name != null)
+        data.map((record) => record.CONDO_NAME).filter((name): name is string => name != null)
       )
     ).sort();
   }, [data]);
@@ -69,11 +67,7 @@ function TreasuryContent() {
   }, [data, selectedCondo]);
 
   const uniqueLevelAndUseTypes = useMemo(() => {
-    return Array.from(
-      new Set(
-        filteredOptions.map((record) => `${record.OFLEVEL}|${record.USE_CATG}`)
-      )
-    )
+    return Array.from(new Set(filteredOptions.map((record) => `${record.OFLEVEL}|${record.USE_CATG}`)))
       .map((combined) => {
         const [level, useType] = combined.split("|");
         return { level, useType };
@@ -90,67 +84,59 @@ function TreasuryContent() {
     )?.VAL_AMT_P_MET;
   }, [data, selectedCondo, selectedLevel, selectedUseType]);
 
-  if (loading) {
-    return <Loading />;
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-red-500">Error: {error}</div>
-      </div>
-    );
-  }
+  if (loading) return <Loading />;
+  if (error) return <div className="text-red-500">Error: {error}</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 flex justify-center items-center">
       <div className="max-w-2xl w-full bg-white rounded-xl shadow-lg p-6 space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800">
-          ราคาประเมินห้องชุด
-        </h1>
-
+        <h1 className="text-2xl font-bold text-gray-800">ราคาประเมินห้องชุด</h1>
+        
         <SearchBar
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           setShowCondoDropdown={setShowCondoDropdown}
         />
-
+        
         {showCondoDropdown && filteredCondos.length > 0 && (
-          <div className="relative">
-            <CondoDropdown
-              filteredCondos={filteredCondos}
-              searchTerm={searchTerm}
-              setSelectedCondo={setSelectedCondo}
-              setShowCondoDropdown={setShowCondoDropdown}
-            />
-          </div>
+          <CondoDropdown
+            filteredCondos={filteredCondos}
+            searchTerm={searchTerm}
+            setSelectedCondo={(condo) => {
+              setSelectedCondo(condo);
+              setSelectedLevel("");
+              setSelectedUseType("");
+              setShowOptionsDropdown(false);
+            }}
+            setShowCondoDropdown={setShowCondoDropdown}
+          />
         )}
-
+        
         {selectedCondo && (
           <div className="relative space-y-2">
-            <h2 className="text-lg font-semibold">
-              ชื่ออาคารชุดที่เลือก คือ {selectedCondo}
-            </h2>
-
+            <h2 className="text-lg font-semibold">ชื่ออาคารชุดที่เลือก: {selectedCondo}</h2>
+            
             <button
               onClick={() => setShowOptionsDropdown(true)}
-              type="button"
-              className="text-blue-700 hover:text-white border border-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center me-2 mb-2 dark:border-blue-500 dark:text-blue-500 dark:hover:text-white dark:hover:bg-blue-500 dark:focus:ring-blue-800"
+              className="text-blue-700 border border-blue-700 rounded-lg px-5 py-2.5 hover:bg-blue-800 hover:text-white"
             >
               เลือกชั้น
             </button>
-
+            
             {showOptionsDropdown && (
               <OptionsDropdown
                 uniqueLevelAndUseTypes={uniqueLevelAndUseTypes}
-                setSelectedLevel={setSelectedLevel}
+                setSelectedLevel={(level) => {
+                  setSelectedLevel(level);
+                  setSelectedUseType("");
+                }}
                 setSelectedUseType={setSelectedUseType}
                 setShowOptionsDropdown={setShowOptionsDropdown}
               />
             )}
           </div>
         )}
-
+        
         <PriceDisplay selectedPrice={selectedPrice} />
       </div>
     </div>
