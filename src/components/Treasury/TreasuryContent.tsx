@@ -20,118 +20,166 @@ interface TreasuryData {
 }
 
 function TreasuryContent() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-      setPage(1); // Reset to first page on new search
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [search]);
+  // State management
+  const [data, setData] = useState<CondoRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCondo, setSelectedCondo] = useState<string>("");
+  const [showCondoDropdown, setShowCondoDropdown] = useState(false);
+  const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
+  const [selectedLevel, setSelectedLevel] = useState<string>("");
+  const [selectedUseType, setSelectedUseType] = useState<string>("");
+  const [totalRecords, setTotalRecords] = useState(0);
 
   // Fetch data
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
       try {
-        const response = await fetch(
-          `/api/treasury?page=${page}&search=${debouncedSearch}`
-        );
-        const json = await response.json();
-        if (json.success) {
-          setData(json.result.records);
-          setTotalPages(json.result.totalPages);
-        }
-      } catch (error) {
-        console.error("Error fetching data:", error);
+        const response = await fetch(`/api/treasury?page=1&limit=1000`); // Fetch more records initially
+        if (!response.ok) throw new Error("Failed to fetch data");
+        const result: TreasuryData = await response.json();
+        setData(result.result.records);
+        setTotalRecords(result.result.totalRecords);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchData();
-  }, [page, debouncedSearch]);
+  }, []);
+
+  // Update search function
+  useEffect(() => {
+    if (searchTerm.length > 0) {
+      const fetchSearchResults = async () => {
+        try {
+          const response = await fetch(
+            `/api/treasury?search=${searchTerm}&page=1&limit=1000`
+          );
+          if (!response.ok) throw new Error("Failed to fetch search results");
+          const result: TreasuryData = await response.json();
+          setData(result.result.records);
+        } catch (err) {
+          console.error("Search error:", err);
+        }
+      };
+
+      fetchSearchResults();
+    }
+  }, [searchTerm]);
+
+  // Memoized values
+  const uniqueCondos = useMemo(() => {
+    return Array.from(
+      new Set(
+        data
+          .map((record) => record.CONDO_NAME)
+          .filter((name): name is string => name != null)
+      )
+    ).sort();
+  }, [data]);
+
+  const filteredCondos = useMemo(() => {
+    if (!searchTerm) return uniqueCondos;
+    return uniqueCondos.filter((condo) =>
+      condo.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [searchTerm, uniqueCondos]);
+
+  const filteredOptions = useMemo(() => {
+    if (!selectedCondo) return [];
+    return data.filter((record) => record.CONDO_NAME === selectedCondo);
+  }, [data, selectedCondo]);
+
+  const uniqueLevelAndUseTypes = useMemo(() => {
+    return Array.from(
+      new Set(
+        filteredOptions.map((record) => `${record.OFLEVEL}|${record.USE_CATG}`)
+      )
+    )
+      .map((combined) => {
+        const [level, useType] = combined.split("|");
+        return { level, useType };
+      })
+      .sort((a, b) => a.level.localeCompare(b.level));
+  }, [filteredOptions]);
+
+  const selectedPrice = useMemo(() => {
+    return data.find(
+      (record) =>
+        record.CONDO_NAME === selectedCondo &&
+        record.OFLEVEL === selectedLevel &&
+        record.USE_CATG === selectedUseType
+    )?.VAL_AMT_P_MET;
+  }, [data, selectedCondo, selectedLevel, selectedUseType]);
+
+  if (loading) return <Loading />;
+  if (error) return <div className="text-red-500">Error: {error}</div>;
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 space-y-4">
-      {/* Search Input */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder="ค้นหาข้อมูล..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      </div>
+    <div className="min-h-screen bg-gray-50 py-8 px-4 flex justify-center items-center">
+      <div className="max-w-2xl w-full bg-white rounded-xl shadow-lg p-6 space-y-6">
+        <h1 className="text-2xl font-bold text-gray-800">ราคาประเมินห้องชุด</h1>
 
-      {/* Loading State */}
-      {loading && (
-        <div className="text-center py-8 text-gray-600">กำลังโหลดข้อมูล...</div>
-      )}
+        {/* Search Bar Component */}
+        <div className="relative">
+          <SearchBar
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            setShowCondoDropdown={setShowCondoDropdown}
+          />
 
-      {/* Data Display */}
-      {!loading && data.length > 0 && (
-        <div className="space-y-4">
-          {data.map((item: any, index: number) => (
-            <div key={index} className="bg-white rounded-lg shadow-md">
-              <div className="p-4">
-                {/* Customize this based on your data structure */}
-                <pre className="whitespace-pre-wrap text-sm">
-                  {JSON.stringify(item, null, 2)}
-                </pre>
-              </div>
+          {/* Condo Dropdown Component */}
+          {showCondoDropdown && filteredCondos.length > 0 && (
+            <div className="absolute left-0 mt-2 w-full z-10 bg-white shadow-lg rounded-lg border border-gray-200">
+              <CondoDropdown
+                filteredCondos={filteredCondos}
+                searchTerm={searchTerm}
+                setSelectedCondo={(condo) => {
+                  setSelectedCondo(condo);
+                  setSelectedLevel("");
+                  setSelectedUseType("");
+                  setShowOptionsDropdown(false);
+                }}
+                setShowCondoDropdown={setShowCondoDropdown}
+              />
             </div>
-          ))}
+          )}
         </div>
-      )}
+        
+        {/* Selected Condo and Options */}
+        {selectedCondo && (
+          <div className="relative space-y-2">
+            <h2 className="text-lg font-semibold">
+              ชื่ออาคารชุดที่เลือก: {selectedCondo}
+            </h2>
 
-      {/* No Results */}
-      {!loading && data.length === 0 && (
-        <div className="text-center py-8 text-gray-600">
-          ไม่พบข้อมูลที่ค้นหา
-        </div>
-      )}
+            <button
+              onClick={() => setShowOptionsDropdown(true)}
+              className="text-blue-700 border border-blue-700 rounded-lg px-5 py-2.5 hover:bg-blue-800 hover:text-white"
+            >
+              เลือกชั้น
+            </button>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center space-x-4 mt-4">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className={`px-4 py-2 rounded-lg ${
-              page === 1
-                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : "bg-blue-500 text-white hover:bg-blue-600"
-            }`}
-          >
-            ก่อนหน้า
-          </button>
+            {showOptionsDropdown && (
+              <div className="absolute left-0 mt-2 w-full z-10 bg-white shadow-lg rounded-lg border border-gray-200">
+                <OptionsDropdown
+                  uniqueLevelAndUseTypes={uniqueLevelAndUseTypes}
+                  setSelectedLevel={setSelectedLevel}
+                  setSelectedUseType={setSelectedUseType}
+                  setShowOptionsDropdown={setShowOptionsDropdown}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
-          <span className="text-gray-600">
-            หน้า {page} จาก {totalPages}
-          </span>
-
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className={`px-4 py-2 rounded-lg ${
-              page === totalPages
-                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : "bg-blue-500 text-white hover:bg-blue-600"
-            }`}
-          >
-            ถัดไป
-          </button>
-        </div>
-      )}
+        {/* Price Display Component */}
+        <PriceDisplay selectedPrice={selectedPrice} />
+      </div>
     </div>
   );
 }
