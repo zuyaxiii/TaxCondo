@@ -2,47 +2,37 @@ import { NextResponse } from 'next/server';
 import { type NextRequest } from 'next/server';
 
 const RESOURCE_ID = 'b115b105-58c6-4c3d-8ca8-687f7501e296';
-const API_URL = 'https://catalog.treasury.go.th/api/3/action/datastore_search';
-const MAX_DISPLAY_LIMIT = 1000;
-const FETCH_TIMEOUT = 8000;
+const API_URL = 'https://catalog.treasury.go.th/tl/api/3/action/datastore_search';
+const MAX_DISPLAY_LIMIT = 1000; // จำกัดการแสดงผลสูงสุด 1000 รายการ
 
 async function fetchFilteredRecords(search: string, offset: number, limit: number) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // ตั้งเวลา timeout เป็น 30 วินาที
+
+    // จำกัดการดึงข้อมูลต่อครั้งไม่เกิน 1000 รายการ
     const fetchLimit = Math.min(limit, MAX_DISPLAY_LIMIT);
-    const url = `${API_URL}?resource_id=${RESOURCE_ID}&q=${encodeURIComponent(search)}&limit=${fetchLimit}&offset=${offset}`;
     
-    console.log('Fetching from URL:', url);
+    // เพิ่มพารามิเตอร์ในการค้นหาชื่อคอนโด
+    const url = `${API_URL}?resource_id=${RESOURCE_ID}&q=${encodeURIComponent(search)}&limit=${fetchLimit}&offset=${offset}`;
+    const response = await fetch(url, { signal: controller.signal });
 
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (compatible; NextJS/API)',
-      },
-      next: { revalidate: 0 }
-    });
-
-    clearTimeout(timeout); // ต้องเรียก clearTimeout() หลัง fetch สำเร็จ
+    clearTimeout(timeout);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error Response:', errorText);
-      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+      throw new Error(`Failed to fetch data at offset ${offset}`);
     }
 
     const data = await response.json();
-
-    console.log('Data received:', {
-      totalRecords: data.result?.records?.length,
-      hasResult: !!data.result,
-      total: data.result?.total
-    });
-
+    
+    // กรองข้อมูลตามชื่อคอนโด
     const filteredRecords = data.result?.records?.filter((record: any) => {
-      return search ? (record.project_name || '').toLowerCase().includes(search.toLowerCase()) : true;
+      // ถ้ามีการค้นหา ให้กรองเฉพาะคอนโดที่มีชื่อตรงกับคำค้นหา
+      if (search) {
+        const condoName = record.CONDO_NAME || ''; // ปรับตามชื่อฟิลด์จริงในข้อมูล
+        return condoName.toLowerCase().includes(search.toLowerCase());
+      }
+      return true; // ถ้าไม่มีการค้นหา แสดงทั้งหมด
     }) || [];
 
     return {
@@ -51,83 +41,64 @@ async function fetchFilteredRecords(search: string, offset: number, limit: numbe
       displayTotal: Math.min(data.result?.total ?? 0, MAX_DISPLAY_LIMIT)
     };
   } catch (error) {
-    clearTimeout(timeout); // ต้องเรียก clearTimeout() ก่อนโยน error ออกไป
-    console.error('Error in fetchFilteredRecords:', error instanceof Error ? error.message : 'Unknown error');
-    throw error instanceof Error ? error : new Error('Unknown fetch error');
+    console.error('Error fetching filtered data:', error);
+    return { records: [], total: 0, displayTotal: 0 };
   }
 }
 
 export const config = {
   runtime: 'edge',
-  regions: ['sin1'],
 };
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('Incoming request:', {
-      url: request.url,
-      headers: Object.fromEntries(request.headers.entries())
-    });
-
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || '';
+    const search = searchParams.get('search') || ''; // คำค้นหาชื่อคอนโด
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '100', 10);
-    const offset = (page - 1) * limit; // แก้ไข offset calculation
+    
+    // คำนวณ offset โดยตรวจสอบไม่ให้เกิน MAX_DISPLAY_LIMIT
+    const offset = Math.min((page - 1) * limit, MAX_DISPLAY_LIMIT);
 
     const { records, total, displayTotal } = await fetchFilteredRecords(search, offset, limit);
 
-    return NextResponse.json({
-      success: true,
-      result: {
-        total,
-        displayTotal,
-        hasSearch: Boolean(search),
-        searchTerm: search,
-        records
-      }
-    }, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Cache-Control': 'no-store, max-age=0',
+    // ใช้ Streaming Response
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        try {
+          controller.enqueue(encoder.encode(`{
+            "success": true,
+            "result": {
+              "total": ${total},
+              "displayTotal": ${displayTotal},
+              "hasSearch": ${Boolean(search)},
+              "searchTerm": "${search}",
+              "records": [`));
+
+          records.forEach((record: any, index: number) => {
+            const chunk = JSON.stringify(record);
+            controller.enqueue(encoder.encode(index > 0 ? `,${chunk}` : chunk));
+          });
+
+          controller.enqueue(encoder.encode(`]}}`));
+        } catch (error) {
+          console.error('Error in streaming response:', error);
+          controller.enqueue(encoder.encode(`]}}`));
+        } finally {
+          controller.close();
+        }
       }
     });
 
+    return new Response(stream, {
+      headers: { 'Content-Type': 'application/json' }
+    });
   } catch (error) {
-    console.error('Error in GET handler:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : 'No stack trace',
-      name: error instanceof Error ? error.name : 'UnknownError'
-    });
-
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch data',
-      errorDetails: {
-        type: error instanceof Error ? error.name : 'UnknownError',
-        timestamp: new Date().toISOString()
-      }
-    }, {
-      status: error instanceof Error && error.name === 'AbortError' ? 504 : 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Cache-Control': 'no-store, max-age=0'
-      }
-    });
+    console.error('Error in API handler:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch data' },
+      { status: 500 }
+    );
   }
-}
-
-// ✅ แก้ไข OPTIONS handler ให้ใช้ status 204 ตามมาตรฐาน CORS
-export async function OPTIONS(request: NextRequest) {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    }
-  });
 }
