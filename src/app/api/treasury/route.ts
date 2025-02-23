@@ -4,11 +4,11 @@ import { type NextRequest } from 'next/server';
 const RESOURCE_ID = 'b115b105-58c6-4c3d-8ca8-687f7501e296';
 const API_URL = 'https://catalog.treasury.go.th/tl/api/3/action/datastore_search';
 
-// Fetch data with timeout (5s)
+// Fetch data with timeout (10s)
 async function fetchFilteredRecords(search: string, offset: number, limit: number) {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
     const url = `${API_URL}?resource_id=${RESOURCE_ID}&q=${encodeURIComponent(search)}&limit=${limit}&offset=${offset}`;
     const response = await fetch(url, { signal: controller.signal });
