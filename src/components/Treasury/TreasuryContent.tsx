@@ -109,14 +109,12 @@ function TreasuryContent() {
           ราคาประเมินห้องชุด
         </h1>
 
-        {/* ค้นหาคอนโด */}
         <SearchBar
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           setShowCondoDropdown={setShowCondoDropdown}
         />
 
-        {/* รายการคอนโดที่ค้นหาได้ */}
         {showCondoDropdown && filteredCondos.length > 0 && (
           <div className="relative">
             <CondoDropdown
@@ -128,7 +126,6 @@ function TreasuryContent() {
           </div>
         )}
 
-        {/* แสดงตัวเลือกสำหรับคอนโดที่เลือก */}
         {selectedCondo && (
           <div className="relative space-y-2">
             <h2 className="text-lg font-semibold">
@@ -154,7 +151,6 @@ function TreasuryContent() {
           </div>
         )}
 
-        {/* แสดงราคาที่เลือก */}
         <PriceDisplay selectedPrice={selectedPrice} />
       </div>
     </div>

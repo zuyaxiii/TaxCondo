@@ -44,7 +44,7 @@ const OptionsDropdown = ({
             console.log(`Selecting level: ${level}, useType: ${useType}`);
             setSelectedLevel(level);
             setSelectedUseType(useType);
-            setShowOptionsDropdown(false); // ปิด dropdown หลังจากเลือกตัวเลือก
+            setShowOptionsDropdown(false); 
           }}
           className="w-full px-4 py-2 text-left hover:bg-blue-50 focus:outline-none focus:bg-blue-50"
         >
