@@ -12,7 +12,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   return (
     <div className="mb-6 relative">
       <label className="block text-sm font-medium text-gray-700 mb-2">
-        ชื่ออาคารชุด
+        ชื่ออาคารชุด 1
       </label>
       <div className="relative">
         <input
