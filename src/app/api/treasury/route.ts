@@ -66,7 +66,7 @@ export const config = {
   runtime: 'nodejs', // เปลี่ยนจาก 'edge' เป็น 'nodejs'
 };
 
-export async function GET(request: { url: string | URL; }) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
