@@ -3,19 +3,26 @@ import { type NextRequest } from 'next/server';
 
 const RESOURCE_ID = 'b115b105-58c6-4c3d-8ca8-687f7501e296';
 const API_URL = 'https://catalog.treasury.go.th/tl/api/3/action/datastore_search';
-const MAX_DISPLAY_LIMIT = 1000; // จำกัดการแสดงผลสูงสุด 1000 รายการ
+const MAX_DISPLAY_LIMIT = 1000;
 
 async function fetchFilteredRecords(search: string, offset: number, limit: number) {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // ตั้งเวลา timeout เป็น 30 วินาที
+    const timeout = setTimeout(() => controller.abort(), 9000); // ลดลงเหลือ 9 วินาทีเพื่อให้ทันก่อน Vercel timeout
 
-    // จำกัดการดึงข้อมูลต่อครั้งไม่เกิน 1000 รายการ
     const fetchLimit = Math.min(limit, MAX_DISPLAY_LIMIT);
     
-    // เพิ่มพารามิเตอร์ในการค้นหาชื่อคอนโด
     const url = `${API_URL}?resource_id=${RESOURCE_ID}&q=${encodeURIComponent(search)}&limit=${fetchLimit}&offset=${offset}`;
-    const response = await fetch(url, { signal: controller.signal });
+    
+    // เพิ่ม headers และ cache options
+    const response = await fetch(url, { 
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+      },
+      cache: 'no-store'
+    });
 
     clearTimeout(timeout);
 
@@ -25,14 +32,12 @@ async function fetchFilteredRecords(search: string, offset: number, limit: numbe
 
     const data = await response.json();
     
-    // กรองข้อมูลตามชื่อคอนโด
     const filteredRecords = data.result?.records?.filter((record: any) => {
-      // ถ้ามีการค้นหา ให้กรองเฉพาะคอนโดที่มีชื่อตรงกับคำค้นหา
       if (search) {
-        const condoName = record.CONDO_NAME || ''; // ปรับตามชื่อฟิลด์จริงในข้อมูล
+        const condoName = record.CONDO_NAME || '';
         return condoName.toLowerCase().includes(search.toLowerCase());
       }
-      return true; // ถ้าไม่มีการค้นหา แสดงทั้งหมด
+      return true;
     }) || [];
 
     return {
@@ -48,52 +53,53 @@ async function fetchFilteredRecords(search: string, offset: number, limit: numbe
 
 export const config = {
   runtime: 'edge',
+  regions: ['sin1'], // เพิ่ม region ใกล้ประเทศไทย
 };
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || ''; // คำค้นหาชื่อคอนโด
+    const search = searchParams.get('search') || '';
     const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '100', 10);
+    // ลดขนาด limit ลงเพื่อให้ทำงานได้เร็วขึ้น
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 50);
     
-    // คำนวณ offset โดยตรวจสอบไม่ให้เกิน MAX_DISPLAY_LIMIT
     const offset = Math.min((page - 1) * limit, MAX_DISPLAY_LIMIT);
 
     const { records, total, displayTotal } = await fetchFilteredRecords(search, offset, limit);
 
-    // ใช้ Streaming Response
+    // ปรับการใช้ Streaming Response ให้เร็วขึ้น
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
-      start(controller) {
-        try {
-          controller.enqueue(encoder.encode(`{
-            "success": true,
-            "result": {
-              "total": ${total},
-              "displayTotal": ${displayTotal},
-              "hasSearch": ${Boolean(search)},
-              "searchTerm": "${search}",
-              "records": [`));
+      async start(controller) {
+        const header = `{"success":true,"result":{"total":${total},"displayTotal":${displayTotal},"hasSearch":${Boolean(search)},"searchTerm":"${search}","records":[`;
+        controller.enqueue(encoder.encode(header));
 
-          records.forEach((record: any, index: number) => {
-            const chunk = JSON.stringify(record);
-            controller.enqueue(encoder.encode(index > 0 ? `,${chunk}` : chunk));
-          });
-
-          controller.enqueue(encoder.encode(`]}}`));
-        } catch (error) {
-          console.error('Error in streaming response:', error);
-          controller.enqueue(encoder.encode(`]}}`));
-        } finally {
-          controller.close();
+        // ส่งข้อมูลเป็น chunk เล็กๆ
+        for (let i = 0; i < records.length; i++) {
+          const chunk = JSON.stringify(records[i]);
+          controller.enqueue(encoder.encode(i > 0 ? `,${chunk}` : chunk));
+          
+          // เพิ่ม delay เล็กน้อยทุกๆ 10 records เพื่อไม่ให้ใช้ resources มากเกินไป
+          if (i > 0 && i % 10 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+          }
         }
+
+        controller.enqueue(encoder.encode(`]}}`));
+        controller.close();
       }
     });
 
+    // เพิ่ม headers ที่จำเป็น
     return new Response(stream, {
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
     });
+
   } catch (error) {
     console.error('Error in API handler:', error);
     return NextResponse.json(
