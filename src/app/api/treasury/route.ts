@@ -8,11 +8,9 @@ const MAX_DISPLAY_LIMIT = 1000;
 async function fetchFilteredRecords(search: string, offset: number, limit: number) {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
+    const timeout = setTimeout(() => controller.abort(), 15000); // เพิ่ม timeout เป็น 15 วิ
 
     const fetchLimit = Math.min(limit, MAX_DISPLAY_LIMIT);
-    
-    // ปรับ URL และ encoding
     const searchTerm = search.trim();
     const url = new URL(API_URL);
     url.searchParams.append('resource_id', RESOURCE_ID);
@@ -22,17 +20,18 @@ async function fetchFilteredRecords(search: string, offset: number, limit: numbe
     url.searchParams.append('limit', fetchLimit.toString());
     url.searchParams.append('offset', offset.toString());
 
+    console.log('🌍 Fetching from:', url.toString());
+
     const response = await fetch(url.toString(), { 
       method: 'GET',
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'Accept-Encoding': 'gzip',
         'User-Agent': 'Mozilla/5.0',
         'Origin': 'https://tax-condo.vercel.app',
         'Referer': 'https://tax-condo.vercel.app/treasury' 
       },
-      cache: 'no-store',
+      cache: 'no-store', // ป้องกันปัญหาการ cache บน Vercel
       mode: 'cors',
       credentials: 'omit'
     });
@@ -58,24 +57,28 @@ async function fetchFilteredRecords(search: string, offset: number, limit: numbe
       displayTotal: Math.min(total, MAX_DISPLAY_LIMIT)
     };
   } catch (error) {
-    console.error('Error fetching filtered data:', error);
-    throw error; // ส่งต่อ error ไปให้ handler จัดการ
+    console.error('❌ Error fetching filtered data:', error);
+    throw error;
   }
 }
 
 export const config = {
-  runtime: 'edge',
-  regions: ['sin1'],
+  runtime: 'nodejs', // เปลี่ยนจาก 'edge' เป็น 'nodejs'
 };
 
-export async function GET(request: NextRequest) {
+export async function GET(request: { url: string | URL; }) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 50);
-    
     const offset = Math.min((page - 1) * limit, MAX_DISPLAY_LIMIT);
+
+    console.log('🔍 Request URL:', request.url);
+    console.log('📌 Search:', search);
+    console.log('📌 Page:', page);
+    console.log('📌 Limit:', limit);
+    console.log('📌 Offset:', offset);
 
     const { records, total, displayTotal } = await fetchFilteredRecords(search, offset, limit);
 
@@ -95,13 +98,13 @@ export async function GET(request: NextRequest) {
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET'
+        'Access-Control-Allow-Methods': 'GET',
+        'Access-Control-Allow-Headers': 'Content-Type'
       }
     });
 
   } catch (error) {
-    console.error('Error in API handler:', error);
-    // ส่ง error message ที่ละเอียดขึ้น
+    console.error('❌ Error in API handler:', error);
     return NextResponse.json({
       success: false,
       error: 'Failed to fetch data',
