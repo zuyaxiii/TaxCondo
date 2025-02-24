@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 const RESOURCE_ID = 'b115b105-58c6-4c3d-8ca8-687f7501e296';
 const API_URL = 'https://catalog.treasury.go.th/tl/api/3/action/datastore_search';
@@ -8,7 +8,7 @@ const MAX_DISPLAY_LIMIT = 1000;
 async function fetchFilteredRecords(search: string, offset: number, limit: number) {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000); // เพิ่ม timeout เป็น 15 วิ
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
     const fetchLimit = Math.min(limit, MAX_DISPLAY_LIMIT);
     const searchTerm = search.trim();
@@ -31,7 +31,7 @@ async function fetchFilteredRecords(search: string, offset: number, limit: numbe
         'Origin': 'https://tax-condo.vercel.app',
         'Referer': 'https://tax-condo.vercel.app/treasury' 
       },
-      cache: 'no-store', // ป้องกันปัญหาการ cache บน Vercel
+      cache: 'no-store',
       mode: 'cors',
       credentials: 'omit'
     });
@@ -63,12 +63,13 @@ async function fetchFilteredRecords(search: string, offset: number, limit: numbe
 }
 
 export const config = {
-  runtime: 'nodejs', // เปลี่ยนจาก 'edge' เป็น 'nodejs'
+  runtime: 'nodejs',
 };
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
+    const url = new URL(request.url);
+    const searchParams = url.searchParams;
     const search = searchParams.get('search') || '';
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 50);
