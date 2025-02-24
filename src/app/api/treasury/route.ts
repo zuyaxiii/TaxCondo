@@ -4,12 +4,34 @@ import type { NextRequest } from 'next/server';
 const RESOURCE_ID = 'b115b105-58c6-4c3d-8ca8-687f7501e296';
 const API_URL = 'https://catalog.treasury.go.th/tl/api/3/action/datastore_search';
 const MAX_DISPLAY_LIMIT = 1000;
+const FETCH_TIMEOUT = 9000;
+const DEFAULT_LIMIT = 20;
+
+async function fetchWithTimeout(url: string, timeout: number) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    return await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0',
+        'Origin': 'https://tax-condo.vercel.app',
+        'Referer': 'https://tax-condo.vercel.app/treasury'
+      },
+      cache: 'no-store',
+      mode: 'cors',
+      credentials: 'omit'
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 async function fetchFilteredRecords(search: string, offset: number, limit: number) {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
     const fetchLimit = Math.min(limit, MAX_DISPLAY_LIMIT);
     const searchTerm = search.trim();
     const url = new URL(API_URL);
@@ -22,21 +44,7 @@ async function fetchFilteredRecords(search: string, offset: number, limit: numbe
 
     console.log('🌍 Fetching from:', url.toString());
 
-    const response = await fetch(url.toString(), { 
-      method: 'GET',
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0',
-        'Origin': 'https://tax-condo.vercel.app',
-        'Referer': 'https://tax-condo.vercel.app/treasury' 
-      },
-      cache: 'no-store',
-      mode: 'cors',
-      credentials: 'omit'
-    });
-
-    clearTimeout(timeout);
+    const response = await fetchWithTimeout(url.toString(), FETCH_TIMEOUT);
 
     if (!response.ok) {
       throw new Error(`API Error: ${response.status} ${response.statusText}`);
@@ -72,7 +80,7 @@ export async function GET(request: Request) {
     const searchParams = url.searchParams;
     const search = searchParams.get('search') || '';
     const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 50);
+    const limit = Math.min(parseInt(searchParams.get('limit') || DEFAULT_LIMIT.toString(), 10), DEFAULT_LIMIT);
     const offset = Math.min((page - 1) * limit, MAX_DISPLAY_LIMIT);
 
     console.log('🔍 Request URL:', request.url);
@@ -97,7 +105,7 @@ export async function GET(request: Request) {
       }
     }, {
       headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Cache-Control': 's-maxage=600, stale-while-revalidate',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET',
         'Access-Control-Allow-Headers': 'Content-Type'
