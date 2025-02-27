@@ -1,27 +1,13 @@
-import { useEffect, useState, useMemo } from "react";
-import Loading from "@/components/Treasury/Loading";
-import SearchBar from "@/components/Treasury/SearchBar";
-import CondoDropdown from "@/components/Treasury/CondoDropdown";
-import OptionsDropdown from "@/components/Treasury/OptionsDropdown";
-import PriceDisplay from "@/components/Treasury/PriceDisplay";
-
-interface CondoRecord {
-  CONDO_NAME: string | null;
-  OFLEVEL: string;
-  USE_CATG: string;
-  VAL_AMT_P_MET: number;
-}
-
-interface TreasuryData {
-  result: {
-    records: CondoRecord[];
-    totalRecords: number;
-  };
-}
+import { useState, useEffect, useMemo } from "react";
+import { Condo } from "@/app/api/types";
+import { condoApi } from "@/app/api/treasury/route";
+import PriceDisplay from "./PriceDisplay";
+import OptionsDropdown from "./OptionsDropdown";
+import SearchBar from "./SearchBar";
+import { useDebounce } from "@/app/utils/useDebounce";
 
 function TreasuryContent() {
-  // State management
-  const [data, setData] = useState<CondoRecord[]>([]);
+  const [data, setData] = useState<Condo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -30,48 +16,47 @@ function TreasuryContent() {
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState<string>("");
   const [selectedUseType, setSelectedUseType] = useState<string>("");
-  const [totalRecords, setTotalRecords] = useState(0);
+  
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
-  // Fetch data
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchCondos = async () => {
       try {
-        const response = await fetch(`/api/treasury?page=1&limit=1000`); // Fetch more records initially
-        if (!response.ok) throw new Error("Failed to fetch data");
-        const result: TreasuryData = await response.json();
-        setData(result.result.records);
-        setTotalRecords(result.result.totalRecords);
+        setLoading(true);
+        const condoData = await condoApi.getAllCondos();
+        setData(condoData);
+        setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred");
+        console.error('Error fetching condos:', err);
+        setError('Failed to load condos. Please try again later.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchCondos();
   }, []);
-
-  // Update search function
+  
   useEffect(() => {
-    if (searchTerm.length > 0) {
+    if (debouncedSearchTerm.length > 0) {
       const fetchSearchResults = async () => {
         try {
-          const response = await fetch(
-            `/api/treasury?search=${searchTerm}&page=1&limit=1000`
-          );
-          if (!response.ok) throw new Error("Failed to fetch search results");
-          const result: TreasuryData = await response.json();
-          setData(result.result.records);
+          setLoading(true);
+          const searchResults = await condoApi.searchCondosByName(debouncedSearchTerm);
+          setData(searchResults);
+          setError(null);
         } catch (err) {
           console.error("Search error:", err);
+          setError('Failed to search condos');
+        } finally {
+          setLoading(false);
         }
       };
 
       fetchSearchResults();
     }
-  }, [searchTerm]);
-
-  // Memoized values
+  }, [debouncedSearchTerm]);
+  
   const uniqueCondos = useMemo(() => {
     return Array.from(
       new Set(
@@ -81,19 +66,19 @@ function TreasuryContent() {
       )
     ).sort();
   }, [data]);
-
+  
   const filteredCondos = useMemo(() => {
     if (!searchTerm) return uniqueCondos;
     return uniqueCondos.filter((condo) =>
       condo.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [searchTerm, uniqueCondos]);
-
+  
   const filteredOptions = useMemo(() => {
     if (!selectedCondo) return [];
     return data.filter((record) => record.CONDO_NAME === selectedCondo);
   }, [data, selectedCondo]);
-
+  
   const uniqueLevelAndUseTypes = useMemo(() => {
     return Array.from(
       new Set(
@@ -106,7 +91,7 @@ function TreasuryContent() {
       })
       .sort((a, b) => a.level.localeCompare(b.level));
   }, [filteredOptions]);
-
+  
   const selectedPrice = useMemo(() => {
     return data.find(
       (record) =>
@@ -116,15 +101,11 @@ function TreasuryContent() {
     )?.VAL_AMT_P_MET;
   }, [data, selectedCondo, selectedLevel, selectedUseType]);
 
-  if (loading) return <Loading />;
-  if (error) return <div className="text-red-500">Error: {error}</div>;
-
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 flex justify-center items-center">
       <div className="max-w-2xl w-full bg-white rounded-xl shadow-lg p-6 space-y-6">
         <h1 className="text-2xl font-bold text-gray-800">ราคาประเมินห้องชุด</h1>
 
-        {/* Search Bar Component */}
         <div className="relative">
           <SearchBar
             searchTerm={searchTerm}
@@ -132,25 +113,31 @@ function TreasuryContent() {
             setShowCondoDropdown={setShowCondoDropdown}
           />
 
-          {/* Condo Dropdown Component */}
-          {showCondoDropdown && filteredCondos.length > 0 && (
-            <div className="absolute left-0 mt-2 w-full z-10 bg-white shadow-lg rounded-lg border border-gray-200">
-              <CondoDropdown
-                filteredCondos={filteredCondos}
-                searchTerm={searchTerm}
-                setSelectedCondo={(condo) => {
-                  setSelectedCondo(condo);
-                  setSelectedLevel("");
-                  setSelectedUseType("");
-                  setShowOptionsDropdown(false);
-                }}
-                setShowCondoDropdown={setShowCondoDropdown}
-              />
+          {loading && (
+            <div className="absolute right-3 top-9">
+              <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500"></div>
             </div>
           )}
         </div>
-        
-        {/* Selected Condo and Options */}
+
+        {showCondoDropdown && filteredCondos.length > 0 && (
+          <div className="relative z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5">
+            {filteredCondos.map((condo) => (
+              <div
+                key={condo}
+                className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                onClick={() => {
+                  setSelectedCondo(condo);
+                  setSearchTerm(condo);
+                  setShowCondoDropdown(false);
+                }}
+              >
+                {condo}
+              </div>
+            ))}
+          </div>
+        )}
+
         {selectedCondo && (
           <div className="relative space-y-2">
             <h2 className="text-lg font-semibold">
@@ -177,7 +164,6 @@ function TreasuryContent() {
           </div>
         )}
 
-        {/* Price Display Component */}
         <PriceDisplay selectedPrice={selectedPrice} />
       </div>
     </div>
